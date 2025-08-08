@@ -1,2 +1,1 @@
-# To-do-list-6
-En riktig heja-lista
+# Fixed build with inline Firebase config
