@@ -32,7 +32,6 @@ import {
   useSensors
 } from "@dnd-kit/core";
 
-// Categories
 const CATEGORIES = [
   { id: "viktigt_bratttom", label: "Viktigt, br\u00e5ttom" },
   { id: "viktigt_inte_bratttom", label: "Viktigt, inte br\u00e5ttom" },
@@ -40,7 +39,6 @@ const CATEGORIES = [
   { id: "inte_bratttom_inte_viktigt", label: "Inte br\u00e5ttom, inte viktigt" }
 ];
 
-// ----- Firebase bootstrap (inline config so it works on Vercel immediately)
 function useFirebase() {
   const firebaseConfig = {
     apiKey: "AIzaSyDeUDN2nyek5vScs9pHegXXx6o61QheKNQ",
@@ -53,7 +51,7 @@ function useFirebase() {
   const app = useMemo(() => initializeApp(firebaseConfig), []);
   const auth = useMemo(() => getAuth(app), [app]);
   const db = useMemo(() => getFirestore(app), [app]);
-  return { app, auth, db };
+  return { auth, db };
 }
 
 function Loader() {
@@ -83,7 +81,6 @@ function Login({ onLogin }) {
   );
 }
 
-// Subscribe to tasks
 function useTasks(db, uid) {
   const [tasks, setTasks] = useState([]);
   useEffect(() => {
@@ -102,7 +99,6 @@ function useTasks(db, uid) {
   return tasks;
 }
 
-// DnD helpers
 function DroppableColumn({ id, title, children, isOver }) {
   const { setNodeRef, isOver: over } = useDroppable({ id });
   const overState = typeof isOver === "boolean" ? isOver : over;
@@ -159,7 +155,7 @@ function DraggableTask({ task, onToggleComplete, onSelectForEdit, blockClick }) 
 export default function App() {
   const { auth, db } = useFirebase();
 
-  // ----- State
+  // ----- state
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState(null);
   const [input, setInput] = useState("");
@@ -169,19 +165,19 @@ export default function App() {
   const [dragOverId, setDragOverId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
 
-  // DnD sensors (hooks must be top-level)
+  // sensors (hooks must be top-level)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor)
   );
 
-  // Keep hooks BEFORE early returns to avoid React hook order errors
+  // IMPORTANT: hooks BEFORE early returns
   const blockClick = React.useRef(false);
   useEffect(() => {
     blockClick.current = draggingId != null;
   }, [draggingId]);
 
-  // Auth persistence + listener
+  // auth listener
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).finally(() => {
       const unsub = onAuthStateChanged(auth, (u) => {
@@ -192,10 +188,8 @@ export default function App() {
     });
   }, [auth]);
 
-  // Live tasks
   const tasks = useTasks(db, user ? user.uid : null);
 
-  // Partition into columns + completed
   const columns = useMemo(() => {
     const map = {
       viktigt_bratttom: [],
@@ -211,7 +205,7 @@ export default function App() {
     return { map, completed };
   }, [tasks]);
 
-  // ----- Auth handlers
+  // handlers
   async function handleLogin() {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
@@ -219,8 +213,6 @@ export default function App() {
   async function handleLogout() {
     await signOut(auth);
   }
-
-  // ----- CRUD
   async function handleAddOrSave(e) {
     if (e) e.preventDefault();
     const text = input.trim();
@@ -228,11 +220,7 @@ export default function App() {
 
     if (editingId) {
       const ref = doc(db, "users", user.uid, "tasks", editingId);
-      await updateDoc(ref, {
-        text,
-        category,
-        updatedAt: new Date().toISOString()
-      });
+      await updateDoc(ref, { text, category, updatedAt: new Date().toISOString() });
       setEditingId(null);
       setInput("");
     } else {
@@ -247,13 +235,11 @@ export default function App() {
       setInput("");
     }
   }
-
   function startEdit(task) {
     setEditingId(task.id);
     setInput(task.text);
     setCategory(task.category);
   }
-
   async function toggleComplete(task, checked) {
     if (!user) return;
     const ref = doc(db, "users", user.uid, "tasks", task.id);
@@ -271,7 +257,6 @@ export default function App() {
       });
     }
   }
-
   async function clearCompleted() {
     if (!user) return;
     const batch = writeBatch(db);
@@ -281,7 +266,7 @@ export default function App() {
     await batch.commit();
   }
 
-  // ----- DnD
+  // DnD
   function onDragStart(event) {
     setDraggingId(event.active ? event.active.id : null);
   }
@@ -294,22 +279,18 @@ export default function App() {
     setDragOverId(null);
     setDraggingId(null);
     if (!active || !over || !user) return;
-
     const taskId = active.id;
     const overId = over.id;
     const colIds = CATEGORIES.map((c) => c.id);
     if (colIds.includes(overId)) {
       const t = tasks.find((x) => x.id === taskId);
-      if (!t) return;
-      if (t.completed) return; // completed tasks are not draggable back
-      if (t.category !== overId) {
-        const ref = doc(db, "users", user.uid, "tasks", taskId);
-        updateDoc(ref, { category: overId, previousCategory: overId });
-      }
+      if (!t || t.completed || t.category === overId) return;
+      const ref = doc(db, "users", user.uid, "tasks", taskId);
+      updateDoc(ref, { category: overId, previousCategory: overId });
     }
   }
 
-  // ----- Early returns AFTER all hooks above
+  // early returns AFTER hooks
   if (!authReady) return <Loader />;
   if (!user) return <Login onLogin={handleLogin} />;
 
